@@ -1,5 +1,8 @@
 package com.duoc.reservams.reservationservice.service;
 
+import com.duoc.reservams.reservationservice.client.AvailabilityClient;
+import com.duoc.reservams.reservationservice.dto.AvailabilityCheckRequestDTO;
+import com.duoc.reservams.reservationservice.dto.AvailabilityCheckResponseDTO;
 import com.duoc.reservams.reservationservice.dto.ReservationRequestDTO;
 import com.duoc.reservams.reservationservice.dto.ReservationResponseDTO;
 import com.duoc.reservams.reservationservice.dto.ReservationStatusUpdateDTO;
@@ -10,14 +13,19 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.List;
 
-// Aqui va la lógica de negocio de las reservas
+// aqui va la logica de negocio de las reservas
 @Service
 public class ReservationService {
 
     private final ReservationRepository reservationRepository;
 
-    public ReservationService(ReservationRepository reservationRepository) {
+    // cliente Feign para consultar disponibilidad en availability-service
+    private final AvailabilityClient availabilityClient;
+
+    public ReservationService(ReservationRepository reservationRepository,
+                              AvailabilityClient availabilityClient) {
         this.reservationRepository = reservationRepository;
+        this.availabilityClient = availabilityClient;
     }
 
     public List<ReservationResponseDTO> findAll() {
@@ -63,9 +71,29 @@ public class ReservationService {
     }
 
     public ReservationResponseDTO create(ReservationRequestDTO request) {
-        // la fecha de salida siempre sera posterior a la fecha de entrada
+        // la fecha de salida siempre debe ser posterior a la fecha de entrada
         if (!request.getCheckOutDate().isAfter(request.getCheckInDate())) {
             throw new RuntimeException("La fecha de salida debe ser posterior a la fecha de entrada");
+        }
+
+        try {
+            // antes de guardar la reserva, consultamos disponibilidad a otro microservicio
+            AvailabilityCheckRequestDTO availabilityRequest = new AvailabilityCheckRequestDTO(
+                    request.getRoomId(),
+                    request.getCheckInDate(),
+                    request.getCheckOutDate()
+            );
+
+            AvailabilityCheckResponseDTO availabilityResponse =
+                    availabilityClient.checkAvailability(availabilityRequest);
+
+            // si availability-service responde false, no se crea la reserva
+            if (!availabilityResponse.getAvailable()) {
+                throw new RuntimeException(availabilityResponse.getMessage());
+            }
+
+        } catch (Exception ex) {
+            throw new RuntimeException("No se pudo validar la disponibilidad: " + ex.getMessage());
         }
 
         Reservation reservation = new Reservation();
