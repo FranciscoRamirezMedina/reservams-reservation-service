@@ -6,7 +6,9 @@ import com.duoc.reservams.reservationservice.dto.AvailabilityCheckResponseDTO;
 import com.duoc.reservams.reservationservice.dto.ReservationRequestDTO;
 import com.duoc.reservams.reservationservice.dto.ReservationResponseDTO;
 import com.duoc.reservams.reservationservice.dto.ReservationStatusUpdateDTO;
+import com.duoc.reservams.reservationservice.event.ReservationCreatedEvent;
 import com.duoc.reservams.reservationservice.model.Reservation;
+import com.duoc.reservams.reservationservice.producer.ReservationEventProducer;
 import com.duoc.reservams.reservationservice.repository.ReservationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,10 +28,15 @@ public class ReservationService {
     // cliente Feign para consultar disponibilidad en availability-service
     private final AvailabilityClient availabilityClient;
 
+    // producer Kafka para publicar eventos de reservas
+    private final ReservationEventProducer reservationEventProducer;
+
     public ReservationService(ReservationRepository reservationRepository,
-                              AvailabilityClient availabilityClient) {
+                              AvailabilityClient availabilityClient,
+                              ReservationEventProducer reservationEventProducer) {
         this.reservationRepository = reservationRepository;
         this.availabilityClient = availabilityClient;
+        this.reservationEventProducer = reservationEventProducer;
     }
 
     public List<ReservationResponseDTO> findAll() {
@@ -189,6 +196,20 @@ public class ReservationService {
         logger.info("Reserva creada correctamente con ID {} y estado {}",
                 savedReservation.getId(),
                 savedReservation.getStatus());
+
+        ReservationCreatedEvent event = new ReservationCreatedEvent(
+                savedReservation.getId(),
+                savedReservation.getClientUserId(),
+                savedReservation.getHotelId(),
+                savedReservation.getRoomId(),
+                savedReservation.getCheckInDate(),
+                savedReservation.getCheckOutDate(),
+                savedReservation.getTotalAmount(),
+                savedReservation.getStatus(),
+                "Reserva creada correctamente"
+        );
+
+        reservationEventProducer.publishReservationCreatedEvent(event);
 
         return toResponseDTO(savedReservation);
     }
