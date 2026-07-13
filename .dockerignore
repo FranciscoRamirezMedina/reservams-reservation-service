@@ -1,10 +1,7 @@
-target/classes
-target/generated-sources
-target/generated-test-sources
-target/maven-archiver
-target/maven-status
-target/surefire-reports
-target/site
+target
 .git
+.gitignore
+README.md
+*.log
 .idea
-*.iml
+.vscode
